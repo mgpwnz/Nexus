@@ -2,7 +2,7 @@
 # Default variables
 function="install"
 NEXUS_HOME=$HOME/.nexus
-NEXUS_PATH="$HOME/nexus/network-api/clients/cli/target/release/prover"
+NEXUS_PATH="$HOME/.nexus/network-api/clients/cli/target/release/prover"
 # Options
 option_value(){ echo "$1" | sed -e 's%^--[^=]*=%%g; s%^-[^=]*=%%g'; }
 
