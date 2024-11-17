@@ -42,6 +42,7 @@ install() {
         mkdir -p $NEXUS_HOME
         cd $NEXUS_HOME && git clone https://github.com/nexus-xyz/network-api
         cd $NEXUS_HOME/network-api/clients/cli && cargo build --release
+        cd $HOME
         # Create the systemd service file
         sudo tee /etc/systemd/system/nexus.service > /dev/null <<EOF
 [Unit]
@@ -50,7 +51,7 @@ After=network-online.target
 
 [Service]
 User=$USER
-WorkingDirectory=$NEXUS_HOME/network-api/clients/cli
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:$HOME/.cargo/bin
 ExecStart=$NEXUS_PATH beta.orchestrator.nexus.xyz
 Restart=always
 RestartSec=3
