@@ -1,114 +1,103 @@
-#!/bin/bash
-# Default variables
-function="install"
-NEXUS_HOME=$HOME/.nexus
-NEXUS_PATH="$HOME/.nexus/network-api/clients/cli/target/release/prover"
-# Options
-option_value(){ echo "$1" | sed -e 's%^--[^=]*=%%g; s%^-[^=]*=%%g'; }
+#!/usr/bin/env bash
+set -euo pipefail
 
-while test $# -gt 0; do
-    case "$1" in
-        -in|--install)
-            function="install"
-            shift
-            ;;
-        -up|--update)
-            function="update"
-            shift
-            if [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                version="$1"
-                shift
-            fi
-            ;;
-        -un|--uninstall)
-            function="uninstall"
-            shift
-            ;;
-        *|--)
-            break
-            ;;
-    esac
+# ==== Налаштування ====
+REPO_URL="https://github.com/nexus-xyz/nexus-cli.git"
+PROJECT_DIR="$HOME/nexus-cli"
+BUILD_DIR="$PROJECT_DIR/clients/cli"
+ENV_FILE="$HOME/nexus-nodes.env"
+
+# ==== Клонування репо, якщо його нема ====
+if [ ! -d "$PROJECT_DIR" ]; then
+  echo "[+] Репозиторій не знайдено. Клоную..."
+  git clone "$REPO_URL" "$PROJECT_DIR"
+fi
+
+# ==== Перевірка .env ====
+if [ ! -f "$ENV_FILE" ]; then
+  echo "[!] Файл $ENV_FILE не знайдено."
+  read -rp "Хочеш створити його зараз? [y/N] " CREATE_ENV
+  if [[ "$CREATE_ENV" =~ ^[Yy]$ ]]; then
+    echo "NODE_IDS=" > "$ENV_FILE"
+    echo "Файл $ENV_FILE створено. Зараз можна додати перші ID."
+  else
+    echo "Операцію скасовано."
+    exit 1
+  fi
+fi
+
+# ==== Зчитуємо NODE_IDs ====
+export $(grep -v '^#' "$ENV_FILE" | xargs)
+NODE_IDS="${NODE_IDS:-}"
+
+# ==== Відображення наявних ID ====
+if [ -z "$NODE_IDS" ]; then
+  echo "[+] Поточні Node ID: (порожньо)"
+else
+  echo "[+] Поточні Node ID: $NODE_IDS"
+fi
+
+# ==== Пропозиція додати ID ====
+read -rp "Хочеш додати ще ID до списку? [y/N] " ADD_IDS
+if [[ "$ADD_IDS" =~ ^[Yy]$ ]]; then
+  read -rp "Введи ID через кому (наприклад: ID1,ID2,ID3): " NEW_IDS
+  if [ -z "$NODE_IDS" ]; then
+    UPDATED_IDS="$NEW_IDS"
+  else
+    UPDATED_IDS="$NODE_IDS,$NEW_IDS"
+  fi
+  echo "NODE_IDS=$UPDATED_IDS" > "$ENV_FILE"
+  echo "[+] Оновлено NODE_IDS у $ENV_FILE"
+  NODE_IDS="$UPDATED_IDS"
+fi
+
+# ==== Повторно зчитуємо NODE_IDs після оновлення ====
+IFS=',' read -r -a NODE_ID_ARRAY <<< "$NODE_IDS"
+
+if [ "${#NODE_ID_ARRAY[@]}" -eq 0 ]; then
+  echo "[-] Немає жодного Node ID. Додай у $ENV_FILE або перезапусти скрипт."
+  exit 1
+fi
+
+# ==== Оновлення репо (якщо потрібно) ====
+cd "$PROJECT_DIR"
+echo "[+] Перевірка оновлень репозиторію..."
+git fetch
+
+LOCAL_HASH=$(git rev-parse HEAD)
+REMOTE_HASH=$(git rev-parse origin/main)
+
+NEED_BUILD=0
+
+if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
+  echo "[+] Є оновлення. Оновлюю..."
+  git pull
+  NEED_BUILD=1
+else
+  echo "[+] Зміни відсутні."
+fi
+
+# ==== Збірка, якщо потрібно ====
+if [ "$NEED_BUILD" -eq 1 ] || [ ! -f "$BUILD_DIR/target/release/nexus-network" ]; then
+  echo "[+] Виконую збірку..."
+  cd "$BUILD_DIR"
+  cargo build --release
+else
+  echo "[+] Збірка не потрібна."
+fi
+
+# ==== Закриваємо старі tmux сесії ====
+for id in "${NODE_ID_ARRAY[@]}"; do
+  tmux kill-session -t "nexus-$id" 2>/dev/null || true
 done
 
-install() {
-    sudo apt update && sudo apt upgrade -y
-    sudo apt install curl iptables build-essential git wget lz4 jq make gcc nano automake autoconf tmux htop nvme-cli pkg-config libssl-dev libleveldb-dev tar clang bsdmainutils ncdu unzip libleveldb-dev -y
-    sudo curl https://sh.rustup.rs -sSf | sh -s -- -y
-    source $HOME/.cargo/env
-    export PATH="$HOME/.cargo/bin:$PATH"
-    rustup update
-    #check dir
-    if [ ! -d "$NEXUS_HOME/network-api" ]; then
-        mkdir -p $NEXUS_HOME
-        cd $NEXUS_HOME && git clone https://github.com/nexus-xyz/network-api
-        cd $NEXUS_HOME/network-api/clients/cli && cargo build --release
-        cd $HOME
-        # Create the systemd service file
-        sudo tee /etc/systemd/system/nexus.service > /dev/null <<EOF
-[Unit]
-Description=Nexus Node
-After=network-online.target
+# ==== Запускаємо нові tmux сесії ====
+for id in "${NODE_ID_ARRAY[@]}"; do
+  echo "[+] Запускаю ноду $id у tmux-сесії nexus-$id"
+  tmux new-session -d -s "nexus-$id" \
+    "$BUILD_DIR/target/release/nexus-network start --node-id $id"
+done
 
-[Service]
-User=$USER
-Environment=PATH=/usr/local/bin:/usr/bin:/bin:$HOME/.cargo/bin
-ExecStart=$NEXUS_PATH beta.orchestrator.nexus.xyz
-Restart=always
-RestartSec=3
-LimitNOFILE=65535
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-        sudo systemctl enable nexus.service
-        sudo systemctl daemon-reload
-        sudo systemctl start nexus.service
-
-    else
-        echo "$NEXUS_HOME/network-api exists. Updating."
-        (cd $NEXUS_HOME/network-api && git pull)
-        sudo systemctl restart nexus.service
-    fi
-    sudo journalctl -u nexus -f
-}
-
-update() {
-    sudo apt update && sudo apt upgrade -y
-
-    if [ -d "$NEXUS_HOME" ]; then
-        echo "Directory $NEXUS_HOME exists. Checking for updates..."
-        (cd $NEXUS_HOME/network-api && git pull)
-        sudo systemctl restart nexus.service
-        sudo journalctl -u nexus -f
-    fi
-}
-
-uninstall() {
-    if [ ! -d "$NEXUS_HOME" ]; then
-        echo "Directory $NEXUS_HOME does not exist. Nothing to uninstall."
-        return 0
-    fi
-
-    read -r -p "Wipe all DATA? [y/N] " response
-    case "$response" in
-        [yY][eE][sS]|[yY]) 
-            sudo systemctl stop nexus.service  
-            sudo systemctl disable nexus.service
-            sudo systemctl daemon-reload
-            rm -rf "$NEXUS_HOME"
-            sudo rm -f /etc/systemd/system/nexus.service
-
-            echo "Nexus successfully uninstalled and data wiped."
-            ;;
-        *)
-            echo "Canceled"
-            return 0
-            ;;
-    esac
-}
-
-# Install necessary packages and execute the function
-sudo apt install wget jq -y &>/dev/null
-cd
-$function
+echo "[✓] Усі ноди запущені у tmux!"
+echo "Для перегляду сесії: tmux attach -t nexus-<ID>"
+echo "Щоб від'єднатись: Ctrl+B, потім D"
