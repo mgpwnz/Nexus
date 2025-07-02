@@ -82,6 +82,7 @@ if [ "$NEED_BUILD" -eq 1 ] || [ ! -f "$BUILD_DIR/target/release/nexus-network" ]
   echo "[+] Виконую збірку..."
   cd "$BUILD_DIR"
   cargo build --release
+  cargo build --release --features build_proto
 else
   echo "[+] Збірка не потрібна."
 fi
