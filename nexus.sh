@@ -1,3 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ==== Налаштування ====
+REPO_URL="https://github.com/nexus-xyz/nexus-cli.git"
+PROJECT_DIR="$HOME/nexus-cli"
+BUILD_DIR="$PROJECT_DIR/clients/cli"
+ENV_FILE="$HOME/nexus-nodes.env"
+
+# ==== Перевірка .env ====
+if [ ! -f "$ENV_FILE" ]; then
+  echo "[!] Файл $ENV_FILE не знайдено. Створюю..."
+  echo "NODE_IDS=" > "$ENV_FILE"
+fi
+
+# ==== Завантаження змінних ====
+export $(grep -v '^#' "$ENV_FILE" | xargs || true)
+
 # ==== Налаштування таймера ====
 if [ "${DISABLE_NEXUS_TIMER:-}" != "true" ]; then
   if [[ -t 0 ]]; then
