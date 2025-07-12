@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ==== Логування ====
-exec >> /var/log/nexus-tmux.log 2>&1
+# ==== Логування (лише фонова/таймерна робота) ====
+LOGFILE=/var/log/nexus-tmux.log
+
+if [[ -t 1 ]]; then
+  # ми в інтерактивному терміналі — показуємо і лог
+  exec > >(tee -a "$LOGFILE") 2>&1
+else
+  # без терміналу (systemd) — просто в лог
+  exec >> "$LOGFILE" 2>&1
+fi
+
 
 # ==== Встановлюємо $HOME та середовище для systemd ====
 export HOME="/root"
