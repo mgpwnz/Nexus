@@ -3,6 +3,7 @@ set -euo pipefail
 
 # ==== Встановлюємо $HOME вручну для systemd ====
 export HOME="/root"
+export XDG_RUNTIME_DIR="/run/user/0"
 
 # ==== Налаштування ====
 REPO_URL="https://github.com/nexus-xyz/nexus-cli.git"
