@@ -120,33 +120,21 @@ IFS=',' read -r -a ARR <<< "$NODE_IDS"
 [ "${#ARR[@]}" -eq 0 ] && { echo "[-] Немає жодного Node ID."; exit 1; }
 echo "[+] Node IDs: $NODE_IDS"
 
-# ==== Клонування/оновлення репо ====
+# ==== Примусове оновлення репо та збірка ====
 if [ ! -d "$PROJECT_DIR" ]; then
-  echo "[+] Клоную репозиторій…"
+  echo "[+] Репозиторій не знайдено. Клоную…"
   git clone "$REPO_URL" "$PROJECT_DIR"
 fi
-cd "$PROJECT_DIR"
-echo "[+] Перевіряю оновлення…"
-git fetch
-LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse origin/main)
-if [ "$LOCAL" != "$REMOTE" ]; then
-  echo "[+] Оновлюю репо…"
-  git pull
-  NEED_BUILD=1
-else
-  NEED_BUILD=0
-  echo "[+] Немає оновлень."
-fi
 
-# ==== Збірка ====
-if [ "$NEED_BUILD" -eq 1 ] || [ ! -f "$BUILD_DIR/target/release/nexus-network" ]; then
-  echo "[+] Збираю…"
-  cd "$BUILD_DIR"
-  /root/.cargo/bin/cargo build --release
-else
-  echo "[+] Збірка не потрібна."
-fi
+cd "$PROJECT_DIR"
+echo "[+] Оновлення репозиторію до origin/main (git reset --hard)…"
+git fetch origin
+git reset --hard origin/main
+
+echo "[+] Виконую збірку (release)…"
+cd "$BUILD_DIR"
+/root/.cargo/bin/cargo build --release
+
 
 # ==== Завершальні дії: tmux через script ====
 for id in "${ARR[@]}"; do
