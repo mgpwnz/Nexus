@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ==== Логування ====
+exec >> /var/log/nexus-tmux.log 2>&1
+
 # ==== Встановлюємо $HOME вручну для systemd ====
 export HOME="/root"
 export XDG_RUNTIME_DIR="/run/user/0"
+export TERM="xterm"
+
+# ==== Перевірка залежностей ====
+command -v tmux >/dev/null 2>&1 || { echo "❌ Потрібно встановити 'tmux'"; exit 1; }
+command -v script >/dev/null 2>&1 || { echo "❌ Потрібно встановити 'script' (util-linux)"; exit 1; }
 
 # ==== Налаштування ====
 REPO_URL="https://github.com/nexus-xyz/nexus-cli.git"
@@ -27,14 +35,10 @@ OLD_USER_TIMER="$OLD_USER_SYSTEMD_DIR/nexus-auto-update.timer"
 
 if [ -f "$OLD_USER_SERVICE" ] || [ -f "$OLD_USER_TIMER" ]; then
   echo "[i] Виявлено старий user-сервіс. Видаляю..."
-
   systemctl --user stop nexus-auto-update.timer 2>/dev/null || true
   systemctl --user disable nexus-auto-update.timer 2>/dev/null || true
-
   rm -f "$OLD_USER_SERVICE" "$OLD_USER_TIMER"
-
   systemctl --user daemon-reload
-
   echo "[✓] Старий user-сервіс та таймер видалено."
 fi
 
@@ -148,7 +152,7 @@ fi
 if [ "$NEED_BUILD" -eq 1 ] || [ ! -f "$BUILD_DIR/target/release/nexus-network" ]; then
   echo "[+] Виконую збірку..."
   cd "$BUILD_DIR"
-  /root/.cargo/bin/cargo build --release
+/root/.cargo/bin/cargo build --release
 else
   echo "[+] Збірка не потрібна."
 fi
@@ -158,16 +162,14 @@ for id in "${NODE_ID_ARRAY[@]}"; do
   tmux kill-session -t "nexus-$id" 2>/dev/null || true
 done
 
-# ==== Запускаємо нові tmux сесії ====
+# ==== Запускаємо нові tmux сесії через script (TTY для systemd) ====
 for id in "${NODE_ID_ARRAY[@]}"; do
   echo "[+] Запускаю ноду $id у tmux-сесії nexus-$id"
-  tmux new-session -d -s "nexus-$id" \
-    "$BUILD_DIR/target/release/nexus-network start --node-id $id"
+  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --node-id $id'" /dev/null
 done
 
 # ==== Перевіряємо, що всі tmux сесії активні ====
 ALL_OK=true
-
 for id in "${NODE_ID_ARRAY[@]}"; do
   if ! tmux has-session -t "nexus-$id" 2>/dev/null; then
     echo "[!] Сесія nexus-$id не запущена!"
