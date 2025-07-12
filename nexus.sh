@@ -1,21 +1,3 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-# ==== Налаштування ====
-REPO_URL="https://github.com/nexus-xyz/nexus-cli.git"
-PROJECT_DIR="$HOME/nexus-cli"
-BUILD_DIR="$PROJECT_DIR/clients/cli"
-ENV_FILE="$HOME/nexus-nodes.env"
-
-# ==== Перевірка .env ====
-if [ ! -f "$ENV_FILE" ]; then
-  echo "[!] Файл $ENV_FILE не знайдено. Створюю..."
-  echo "NODE_IDS=" > "$ENV_FILE"
-fi
-
-# ==== Завантаження змінних ====
-export $(grep -v '^#' "$ENV_FILE" | xargs || true)
-
 # ==== Налаштування таймера ====
 if [ "${DISABLE_NEXUS_TIMER:-}" != "true" ]; then
   if [[ -t 0 ]]; then
@@ -29,12 +11,10 @@ if [ "${DISABLE_NEXUS_TIMER:-}" != "true" ]; then
   fi
 
   if [[ "$SETUP_TIMER" =~ ^[Yy]$ ]]; then
-    echo "[+] Створюю systemd таймер..."
-    SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
-    mkdir -p "$SYSTEMD_USER_DIR"
+    echo "[+] Створюю systemd таймер (системний)..."
 
-    SERVICE_FILE="$SYSTEMD_USER_DIR/nexus-auto-update.service"
-    TIMER_FILE="$SYSTEMD_USER_DIR/nexus-auto-update.timer"
+    SERVICE_FILE="/etc/systemd/system/nexus-auto-update.service"
+    TIMER_FILE="/etc/systemd/system/nexus-auto-update.timer"
 
     cat >"$SERVICE_FILE" <<EOF
 [Unit]
@@ -42,7 +22,9 @@ Description=Автозапуск Nexus CLI
 
 [Service]
 Type=oneshot
-ExecStart=$HOME/nexus.sh
+ExecStart=/root/nexus.sh
+StandardOutput=journal
+StandardError=journal
 EOF
 
     cat >"$TIMER_FILE" <<EOF
@@ -58,10 +40,10 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
-    systemctl --user daemon-reload
-    systemctl --user enable --now nexus-auto-update.timer
+    systemctl daemon-reload
+    systemctl enable --now nexus-auto-update.timer
 
-    echo "[✓] Таймер налаштовано!"
+    echo "[✓] Системний таймер налаштовано!"
   else
     echo "DISABLE_NEXUS_TIMER=true" >> "$ENV_FILE"
     echo "[i] Автозапуск вимкнено. Щоб увімкнути — видали DISABLE_NEXUS_TIMER з $ENV_FILE."
