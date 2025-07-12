@@ -16,6 +16,24 @@ fi
 # ==== Завантаження змінних ====
 export $(grep -v '^#' "$ENV_FILE" | xargs || true)
 
+# ==== Видалення старого user-сервісу (якщо є) ====
+OLD_USER_SYSTEMD_DIR="$HOME/.config/systemd/user"
+OLD_USER_SERVICE="$OLD_USER_SYSTEMD_DIR/nexus-auto-update.service"
+OLD_USER_TIMER="$OLD_USER_SYSTEMD_DIR/nexus-auto-update.timer"
+
+if [ -f "$OLD_USER_SERVICE" ] || [ -f "$OLD_USER_TIMER" ]; then
+  echo "[i] Виявлено старий user-сервіс. Видаляю..."
+
+  systemctl --user stop nexus-auto-update.timer 2>/dev/null || true
+  systemctl --user disable nexus-auto-update.timer 2>/dev/null || true
+
+  rm -f "$OLD_USER_SERVICE" "$OLD_USER_TIMER"
+
+  systemctl --user daemon-reload
+
+  echo "[✓] Старий user-сервіс та таймер видалено."
+fi
+
 # ==== Налаштування таймера ====
 if [ "${DISABLE_NEXUS_TIMER:-}" != "true" ]; then
   if [[ -t 0 ]]; then
