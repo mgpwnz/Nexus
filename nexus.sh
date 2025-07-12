@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ==== Встановлюємо $HOME вручну для systemd ====
+export HOME="/root"
+
 # ==== Налаштування ====
 REPO_URL="https://github.com/nexus-xyz/nexus-cli.git"
 PROJECT_DIR="$HOME/nexus-cli"
@@ -34,7 +37,7 @@ if [ -f "$OLD_USER_SERVICE" ] || [ -f "$OLD_USER_TIMER" ]; then
   echo "[✓] Старий user-сервіс та таймер видалено."
 fi
 
-# ==== Налаштування таймера ====
+# ==== Налаштування системного таймера ====
 if [ "${DISABLE_NEXUS_TIMER:-}" != "true" ]; then
   if [[ -t 0 ]]; then
     echo
@@ -145,7 +148,6 @@ if [ "$NEED_BUILD" -eq 1 ] || [ ! -f "$BUILD_DIR/target/release/nexus-network" ]
   echo "[+] Виконую збірку..."
   cd "$BUILD_DIR"
   /root/.cargo/bin/cargo build --release
-
 else
   echo "[+] Збірка не потрібна."
 fi
