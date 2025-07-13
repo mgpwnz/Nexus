@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # ------------------------------------------------------------------
-# Скрипт для реєстрації користувача та генерації кількох нод у Nexus,
-# автоматичного клонування/оновлення та збірки Nexus CLI, збереження
+# Скрипт для генерації кількох нод у Nexus,
+# автоматичного клонування/оновлення та збірки Nexus CLI,
+# перевірки/створення користувача (register-user) та збереження
 # списку NODE_IDS у конфіг-файлі.
 # ------------------------------------------------------------------
 
@@ -13,6 +14,7 @@ PROJECT_DIR="$HOME/nexus-cli"
 BUILD_DIR="$PROJECT_DIR/clients/cli"
 CLI_BIN="$BUILD_DIR/target/release/nexus-network"
 ENV_FILE="$HOME/nexus-nodes.env"
+CONFIG_JSON="$HOME/.nexus/config.json"
 
 # 1) Клонування або оновлення репозиторію Nexus CLI
 if [[ ! -d "$PROJECT_DIR" ]]; then
@@ -30,7 +32,7 @@ echo "[+] Збираю Nexus CLI (cargo build --release)..."
 cd "$BUILD_DIR"
 /root/.cargo/bin/cargo build --release
 
-# 3) Перевірка бінарника CLI
+# 3) Перевірка наявності бінарника CLI
 if [[ ! -x "$CLI_BIN" ]]; then
   echo "❌ Помилка: не знайдено зібраний бінарник: $CLI_BIN" >&2
   exit 1
@@ -38,17 +40,26 @@ fi
 
 echo "[+] Використовуємо CLI: $CLI_BIN"
 
-# 4) Створення ENV_FILE, якщо відсутній
+# 4) Перевірка/створення користувача
+if [[ -f "$CONFIG_JSON" ]]; then
+  # Якщо існує, виводимо знайдений wallet_address
+  WALLET_ADDRESS=$(grep -oE '"wallet_address"[[:space:]]*:[[:space:]]*"[^"]+"' "$CONFIG_JSON" \
+    | grep -oE '0x[0-9a-fA-F]+' ) || true
+  echo "[+] Знайдено конфіг користувача: $CONFIG_JSON"
+  echo "    wallet_address = $WALLET_ADDRESS"
+else
+  # Якщо немає, створюємо користувача
+  read -rp "Введіть WALLET_ADDRESS для реєстрації користувача: " WALLET_ADDRESS
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Регістрація користувача з адресою $WALLET_ADDRESS..."
+  $CLI_BIN register-user --wallet-address "$WALLET_ADDRESS"
+  echo "[+] Користувача зареєстровано. Створено $CONFIG_JSON"
+fi
+
+# 5) Створення ENV_FILE, якщо відсутній
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "NODE_IDS=" > "$ENV_FILE"
   echo "[+] Створено новий файл конфігурації: $ENV_FILE"
 fi
-
-# 5) Введення адреси гаманця (одноразово)
-read -rp "Введіть WALLET_ADDRESS: " WALLET_ADDRESS
-
-echo "[$(date +"%Y-%m-%d %H:%M:%S")] Регістрація користувача з адресою $WALLET_ADDRESS..."
-$CLI_BIN register-user --wallet-address "$WALLET_ADDRESS"
 
 # 6) Запит кількості нод для реєстрації
 read -rp "Скільки нод потрібно зареєструвати? " COUNT
