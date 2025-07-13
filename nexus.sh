@@ -107,20 +107,46 @@ EOF
 fi
 
 # ==== Пропозиція додати NODE_IDs ====
-if [[ -t 0 ]]; then
-  read -t 15 -rp "Хочеш додати ще ID до списку? [y/N] " ADD_IDS || ADD_IDS="n"
+# запит тільки якщо прапор SKIP_ADD_IDS_PROMPT не встановлено
+if [ "${SKIP_ADD_IDS_PROMPT:-}" != "true" ] && [[ -t 0 ]]; then
+  echo
+  echo "Хочеш додати ще ID до списку?"
+  echo "  y — додати зараз"
+  echo "  n — не додавати"
+  echo "  s — більше не питати"
+  read -t 15 -rp "[y/N/s] " ADD_IDS || ADD_IDS="n"
+
+  case "$ADD_IDS" in
+    [Yy])
+      # користувач хоче додати
+      read -rp "Введи ID через кому (ID1,ID2,…): " NEW_IDS
+      UPDATED_IDS="${NODE_IDS:+$NODE_IDS,}$NEW_IDS"
+      # оновлюємо або додаємо рядок у env-файлі
+      if grep -q '^NODE_IDS=' "$ENV_FILE"; then
+        sed -i "s|^NODE_IDS=.*|NODE_IDS=$UPDATED_IDS|" "$ENV_FILE"
+      else
+        echo "NODE_IDS=$UPDATED_IDS" >> "$ENV_FILE"
+      fi
+      NODE_IDS="$UPDATED_IDS"
+      echo "[+] Оновлено NODE_IDS = $NODE_IDS"
+      ;;
+    [Ss])
+      # прапор “більше не питати”
+      echo "SKIP_ADD_IDS_PROMPT=true" >> "$ENV_FILE"
+      export SKIP_ADD_IDS_PROMPT=true
+      echo "[i] Більше не питатиму про додавання ID."
+      ADD_IDS="n"
+      ;;
+    *)
+      # будь-який інший варіант — нічого не змінюємо
+      ADD_IDS="n"
+      ;;
+  esac
 else
+  # або вже встановлено SKIP, або неінтерактивний режим
   ADD_IDS="n"
 fi
 
-NODE_IDS="${NODE_IDS:-}"
-if [[ "$ADD_IDS" =~ ^[Yy]$ ]]; then
-  read -rp "Введи ID через кому (ID1,ID2,…): " NEW_IDS
-  UPDATED_IDS="${NODE_IDS:+$NODE_IDS,}$NEW_IDS"
-  echo "NODE_IDS=$UPDATED_IDS" > "$ENV_FILE"
-  NODE_IDS="$UPDATED_IDS"
-  echo "[+] Оновлено NODE_IDS = $NODE_IDS"
-fi
 
 # ==== Зчитуємо масив та перевірка ====
 IFS=',' read -r -a ARR <<< "$NODE_IDS"
