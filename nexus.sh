@@ -35,7 +35,13 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 # ==== Завантаження змінних ====
-export $(grep -v '^#' "$ENV_FILE" | xargs || true)
+if [ -f "$ENV_FILE" ]; then
+  # автоматично робимо всі змінні експортованими
+  set -a
+  # shell-білдінг: імпортуємо всі змінні з файлу
+  source "$ENV_FILE"
+  set +a
+fi
 
 # ==== Видалення старого user-сервісу (як є) ====
 OLD_DIR="$HOME/.config/systemd/user"
@@ -95,6 +101,7 @@ EOF
     echo "[✓] Таймер налаштовано!"
   else
     echo "DISABLE_NEXUS_TIMER=true" >> "$ENV_FILE"
+    export DISABLE_NEXUS_TIMER=true
     echo "[i] Автозапуск відключено."
   fi
 fi
