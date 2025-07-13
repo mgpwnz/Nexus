@@ -104,3 +104,6 @@ echo "NODE_IDS=$JOINED" > "$ENV_FILE"
 echo "Файл $ENV_FILE оновлено: NODE_IDS=$JOINED"
 
 echo "Готово! Всього нод у конфігурації: ${#ALL_IDS[@]}"
+# 10) Завантаження nexus.sh та інструкція
+wget -q -O nexus.sh https://raw.githubusercontent.com/mgpwnz/Nexus/refs/heads/main/nexus.sh && chmod +x nexus.sh
+echo "Щоб запустити ноди, використовуйте: ./nexus.sh"
