@@ -4,7 +4,7 @@ set -euo pipefail
 # ------------------------------------------------------------------
 # Скрипт для генерації кількох нод у Nexus,
 # автоматичного клонування/оновлення та збірки Nexus CLI,
-# перевірки/створення користувача (register-user) та збереження
+# перевірки/створення користувача та збереження
 # списку NODE_IDS у конфіг-файлі.
 # ------------------------------------------------------------------
 
@@ -16,105 +16,102 @@ CLI_BIN="$BUILD_DIR/target/release/nexus-network"
 ENV_FILE="$HOME/nexus-nodes.env"
 CONFIG_JSON="$HOME/.nexus/config.json"
 
-# 1) Клонування або оновлення репозиторію Nexus CLI
-# if [[ ! -d "$PROJECT_DIR" ]]; then
-#   echo "[+] Репозиторій не знайдено. Клоную $REPO_URL → $PROJECT_DIR..."
-#   git clone "$REPO_URL" "$PROJECT_DIR"
-# else
-#   echo "[+] Оновлення репозиторію у $PROJECT_DIR..."
-#   cd "$PROJECT_DIR"
-#   git fetch origin
-#   git reset --hard origin/main
-# fi
+# 1) ==== Клонування або оновлення репозиторію ====
+if [[ ! -d "$PROJECT_DIR/.git" ]]; then
+  echo "[+] Репозиторій не знайдено або не гіт. Клоную $REPO_URL → $PROJECT_DIR..."
+  git clone "$REPO_URL" "$PROJECT_DIR"
+else
+  echo "[+] Оновлення репозиторію у $PROJECT_DIR..."
+  cd "$PROJECT_DIR"
+  git fetch origin
+  git reset --hard origin/main
+fi
 
-# # 2) Збірка Nexus CLI (release)
-# echo "[+] Збираю Nexus CLI (cargo build --release)..."
-# cd "$BUILD_DIR"
-# /root/.cargo/bin/cargo build --release
-
-# 1) ==== Оновлення репо (якщо потрібно) ====
+# 2) ==== Збірка CLI (release) ====
 cd "$PROJECT_DIR"
-echo "[+] Перевірка оновлень репозиторію..."
-git fetch
-
 LOCAL_HASH=$(git rev-parse HEAD)
 REMOTE_HASH=$(git rev-parse origin/main)
 
-NEED_BUILD=0
-
-if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
-  echo "[+] Є оновлення. Оновлюю..."
-  git pull
-  NEED_BUILD=1
-else
-  echo "[+] Зміни відсутні."
-fi
-
-# 2) ==== Збірка, якщо потрібно ====
-if [ "$NEED_BUILD" -eq 1 ] || [ ! -f "$BUILD_DIR/target/release/nexus-network" ]; then
-  echo "[+] Виконую збірку..."
+if [[ "$LOCAL_HASH" != "$REMOTE_HASH" ]] || [[ ! -x "$CLI_BIN" ]]; then
+  echo "[+] Збираю Nexus CLI..."
   cd "$BUILD_DIR"
   cargo build --release
 else
   echo "[+] Збірка не потрібна."
 fi
 
-# 3) Перевірка наявності бінарника CLI
+# 3) Перевірка наявності бінарника
 if [[ ! -x "$CLI_BIN" ]]; then
-  echo "❌ Помилка: не знайдено зібраний бінарник: $CLI_BIN" >&2
+  echo "❌ Помилка: не знайдено $CLI_BIN" >&2
   exit 1
 fi
-
 echo "[+] Використовуємо CLI: $CLI_BIN"
 
 # 4) Перевірка/створення користувача
 if [[ -f "$CONFIG_JSON" ]]; then
-  # Якщо існує, виводимо знайдений wallet_address
-  WALLET_ADDRESS=$(grep -oE '"wallet_address"[[:space:]]*:[[:space:]]*"[^"]+"' "$CONFIG_JSON" \
-    | grep -oE '0x[0-9a-fA-F]+' ) || true
-  echo "[+] Знайдено конфіг користувача: $CONFIG_JSON"
+  WALLET_ADDRESS=$(grep -oE '"wallet_address"[[:space:]]*:[[:space:]]*"0x[0-9a-fA-F]+"' "$CONFIG_JSON" \
+    | grep -oE '0x[0-9a-fA-F]+') || true
+  echo "[+] Знайдено конфіг: $CONFIG_JSON"
   echo "    wallet_address = $WALLET_ADDRESS"
 else
-  # Якщо немає, створюємо користувача
-  read -rp "Введіть WALLET_ADDRESS для реєстрації користувача: " WALLET_ADDRESS
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Регістрація користувача з адресою $WALLET_ADDRESS..."
+  read -rp "Введіть WALLET_ADDRESS для реєстрації: " WALLET_ADDRESS
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Регістрація користувача..."
   $CLI_BIN register-user --wallet-address "$WALLET_ADDRESS"
   echo "[+] Користувача зареєстровано. Створено $CONFIG_JSON"
 fi
 
-# 5) Створення ENV_FILE, якщо відсутній
+# 5) Підготовка ENV_FILE
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "NODE_IDS=" > "$ENV_FILE"
-  echo "[+] Створено новий файл конфігурації: $ENV_FILE"
+  echo "[+] Створено $ENV_FILE"
 fi
+# Завантажуємо старі ID
+source "$ENV_FILE"
+OLD_IDS="${NODE_IDS:-}"
 
-# 6) Запит кількості нод для реєстрації
+# 6) Запит кількості нод
 read -rp "Скільки нод потрібно зареєструвати? " COUNT
 if ! [[ "$COUNT" =~ ^[0-9]+$ ]] || (( COUNT < 1 )); then
   echo "Некоректна кількість: $COUNT" >&2
   exit 1
 fi
 
-# 7) Завантаження існуючих ID
-source "$ENV_FILE"
-OLD_IDS="${NODE_IDS:-}"
+# 7) Реєстрація з ретраями
 NEW_IDS=()
-
 echo "Починаємо реєстрацію $COUNT нод..."
 for ((i=1; i<=COUNT; i++)); do
-  echo "-> Реєструємо ноду #$i..."
-  OUTPUT=$($CLI_BIN register-node)
-  if ID=$(echo "$OUTPUT" | grep -oE 'Node registered successfully with ID: [0-9]+' | grep -oE '[0-9]+'); then
-    echo "   Отримано ID: $ID"
-    NEW_IDS+=("$ID")
-  else
-    echo "❌ Не вдалося витягнути ID з виводу:" >&2
-    echo "$OUTPUT" >&2
-    exit 1
+  attempt=1
+  success=false
+  until (( attempt > 3 )); do
+    echo "-> Нода #$i (спроба $attempt)..."
+    set +e
+    OUTPUT=$($CLI_BIN register-node 2>&1)
+    STATUS=$?
+    set -e
+    if (( STATUS == 0 )); then
+      if ID=$(echo "$OUTPUT" | grep -oE 'Node registered successfully with ID: [0-9]+' | grep -oE '[0-9]+'); then
+        echo "   Отримано ID: $ID"
+        NEW_IDS+=("$ID")
+        success=true
+        break
+      else
+        echo "   ❌ Не вдалося витягнути ID. Відповідь CLI:" >&2
+        echo "$OUTPUT" >&2
+      fi
+    else
+      echo "   ❌ Помилка реєстрації: $OUTPUT" >&2
+    fi
+    ((attempt++))
+    sleep 5
+  done
+
+  if [[ $success != true ]]; then
+    echo "❌ Нода #$i не зареєстрована після 3 спроб, припиняю."
+    break
   fi
 done
 
-# 8) Об'єднання старих та нових ID, усунення дублів
+# 8) Об’єднуємо старі та нові ID (без дублікатів)
 ALL_IDS=()
 for id in ${OLD_IDS//,/ }; do
   [[ -n "$id" ]] && ALL_IDS+=("$id")
@@ -125,12 +122,13 @@ for id in "${NEW_IDS[@]}"; do
   fi
 done
 
-# 9) Запис у ENV_FILE
+# 9) Записуємо в ENV_FILE
 JOINED=$(IFS=,; echo "${ALL_IDS[*]}")
 echo "NODE_IDS=$JOINED" > "$ENV_FILE"
-echo "Файл $ENV_FILE оновлено: NODE_IDS=$JOINED"
-
+echo "[+] Оновлено $ENV_FILE: NODE_IDS=$JOINED"
 echo "Готово! Всього нод у конфігурації: ${#ALL_IDS[@]}"
+
 # 10) Завантаження nexus.sh та інструкція
-wget -q -O nexus.sh https://raw.githubusercontent.com/mgpwnz/Nexus/refs/heads/main/nexus.sh && chmod +x nexus.sh
+wget -q -O nexus.sh https://raw.githubusercontent.com/mgpwnz/Nexus/refs/heads/main/nexus.sh
+chmod +x nexus.sh
 echo "Щоб запустити ноди, використовуйте: ./nexus.sh"
