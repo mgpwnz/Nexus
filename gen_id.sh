@@ -16,7 +16,7 @@ CLI_BIN="$BUILD_DIR/target/release/nexus-network"
 ENV_FILE="$HOME/nexus-nodes.env"
 CONFIG_JSON="$HOME/.nexus/config.json"
 
- 1) Клонування або оновлення репозиторію Nexus CLI
+ #1) Клонування або оновлення репозиторію Nexus CLI
  if [[ ! -d "$PROJECT_DIR" ]]; then
    echo "[+] Репозиторій не знайдено. Клоную $REPO_URL → $PROJECT_DIR..."
    git clone "$REPO_URL" "$PROJECT_DIR"
