@@ -16,48 +16,48 @@ CLI_BIN="$BUILD_DIR/target/release/nexus-network"
 ENV_FILE="$HOME/nexus-nodes.env"
 CONFIG_JSON="$HOME/.nexus/config.json"
 
- #1) Клонування або оновлення репозиторію Nexus CLI
- if [[ ! -d "$PROJECT_DIR" ]]; then
-   echo "[+] Репозиторій не знайдено. Клоную $REPO_URL → $PROJECT_DIR..."
-   git clone "$REPO_URL" "$PROJECT_DIR"
- else
-   echo "[+] Оновлення репозиторію у $PROJECT_DIR..."
-   cd "$PROJECT_DIR"
-   git fetch origin
-   git reset --hard origin/main
- fi
-
- # 2) Збірка Nexus CLI (release)
- echo "[+] Збираю Nexus CLI (cargo build --release)..."
- cd "$BUILD_DIR"
- /root/.cargo/bin/cargo build --release
-
-# # 1) ==== Оновлення репо (якщо потрібно) ====
-# cd "$PROJECT_DIR"
-# echo "[+] Перевірка оновлень репозиторію..."
-# git fetch
-
-# LOCAL_HASH=$(git rev-parse HEAD)
-# REMOTE_HASH=$(git rev-parse origin/main)
-
-# NEED_BUILD=0
-
-# if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
-#   echo "[+] Є оновлення. Оновлюю..."
-#   git pull
-#   NEED_BUILD=1
+# 1) Клонування або оновлення репозиторію Nexus CLI
+# if [[ ! -d "$PROJECT_DIR" ]]; then
+#   echo "[+] Репозиторій не знайдено. Клоную $REPO_URL → $PROJECT_DIR..."
+#   git clone "$REPO_URL" "$PROJECT_DIR"
 # else
-#   echo "[+] Зміни відсутні."
+#   echo "[+] Оновлення репозиторію у $PROJECT_DIR..."
+#   cd "$PROJECT_DIR"
+#   git fetch origin
+#   git reset --hard origin/main
 # fi
 
-# # 2) ==== Збірка, якщо потрібно ====
-# if [ "$NEED_BUILD" -eq 1 ] || [ ! -f "$BUILD_DIR/target/release/nexus-network" ]; then
-#   echo "[+] Виконую збірку..."
-#   cd "$BUILD_DIR"
-#   cargo build --release
-# else
-#   echo "[+] Збірка не потрібна."
-# fi
+# # 2) Збірка Nexus CLI (release)
+# echo "[+] Збираю Nexus CLI (cargo build --release)..."
+# cd "$BUILD_DIR"
+# /root/.cargo/bin/cargo build --release
+
+# 1) ==== Оновлення репо (якщо потрібно) ====
+cd "$PROJECT_DIR"
+echo "[+] Перевірка оновлень репозиторію..."
+git fetch
+
+LOCAL_HASH=$(git rev-parse HEAD)
+REMOTE_HASH=$(git rev-parse origin/main)
+
+NEED_BUILD=0
+
+if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
+  echo "[+] Є оновлення. Оновлюю..."
+  git pull
+  NEED_BUILD=1
+else
+  echo "[+] Зміни відсутні."
+fi
+
+# 2) ==== Збірка, якщо потрібно ====
+if [ "$NEED_BUILD" -eq 1 ] || [ ! -f "$BUILD_DIR/target/release/nexus-network" ]; then
+  echo "[+] Виконую збірку..."
+  cd "$BUILD_DIR"
+  cargo build --release
+else
+  echo "[+] Збірка не потрібна."
+fi
 
 # 3) Перевірка наявності бінарника CLI
 if [[ ! -x "$CLI_BIN" ]]; then
