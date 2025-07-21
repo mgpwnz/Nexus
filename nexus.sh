@@ -59,7 +59,7 @@ if [ "${DISABLE_NEXUS_TIMER:-}" != "true" ]; then
   if [[ -t 0 ]]; then
     echo
     echo "====================================================="
-    echo "Налаштувати автозапуск nexus.sh раз на 2 дні?"
+    echo "Налаштувати автозапуск nexus.sh раз в день?"
     echo "(за 15 с без відповіді — відмова)"
     echo "====================================================="
     read -t 15 -rp "Налаштувати таймер? [y/N] " SETUP_TIMER || SETUP_TIMER="n"
@@ -85,11 +85,11 @@ EOF
 
     cat >"$TIMER_FILE" <<EOF
 [Unit]
-Description=Запуск Nexus CLI раз на 2 дні
+Description=Запуск Nexus CLI раз в день
 
 [Timer]
 OnBootSec=10min
-OnUnitActiveSec=2d
+OnUnitActiveSec=1d
 Persistent=true
 
 [Install]
