@@ -43,68 +43,82 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 
-# ==== Видалення старого user-сервісу (як є) ====
-OLD_DIR="$HOME/.config/systemd/user"
-[ -f "$OLD_DIR/nexus-auto-update.service" ] || [ -f "$OLD_DIR/nexus-auto-update.timer" ] && {
-  echo "[i] Видаляю старий user-сервіс…"
-  systemctl --user stop nexus-auto-update.timer 2>/dev/null || true
-  systemctl --user disable nexus-auto-update.timer 2>/dev/null || true
-  rm -f "$OLD_DIR/nexus-auto-update."{service,timer}
-  systemctl --user daemon-reload
-  echo "[✓] Видалено."
-}
+# # ==== Видалення старого user-сервісу (як є) ====
+# OLD_DIR="$HOME/.config/systemd/user"
+# [ -f "$OLD_DIR/nexus-auto-update.service" ] || [ -f "$OLD_DIR/nexus-auto-update.timer" ] && {
+#   echo "[i] Видаляю старий user-сервіс…"
+#   systemctl --user stop nexus-auto-update.timer 2>/dev/null || true
+#   systemctl --user disable nexus-auto-update.timer 2>/dev/null || true
+#   rm -f "$OLD_DIR/nexus-auto-update."{service,timer}
+#   systemctl --user daemon-reload
+#   echo "[✓] Видалено."
+# }
 
-# ==== Налаштування системного таймера ====
-if [ "${DISABLE_NEXUS_TIMER:-}" != "true" ]; then
-  if [[ -t 0 ]]; then
-    echo
-    echo "====================================================="
-    echo "Налаштувати автозапуск nexus.sh раз в день?"
-    echo "(за 15 с без відповіді — відмова)"
-    echo "====================================================="
-    read -t 15 -rp "Налаштувати таймер? [y/N] " SETUP_TIMER || SETUP_TIMER="n"
-  else
-    SETUP_TIMER="n"
-  fi
+# ==== Відкат автозапуску (видалення systemd таймера, якщо залишився) ====
+SERVICE_FILE="/etc/systemd/system/nexus-auto-update.service"
+TIMER_FILE="/etc/systemd/system/nexus-auto-update.timer"
 
-  if [[ "$SETUP_TIMER" =~ ^[Yy]$ ]]; then
-    echo "[+] Створюю systemd таймер (системний)…"
-    SERVICE_FILE="/etc/systemd/system/nexus-auto-update.service"
-    TIMER_FILE="/etc/systemd/system/nexus-auto-update.timer"
-
-    cat >"$SERVICE_FILE" <<EOF
-[Unit]
-Description=Автозапуск Nexus CLI
-
-[Service]
-Type=oneshot
-ExecStart=/root/nexus.sh
-StandardOutput=journal
-StandardError=journal
-EOF
-
-    cat >"$TIMER_FILE" <<EOF
-[Unit]
-Description=Запуск Nexus CLI раз в день
-
-[Timer]
-OnBootSec=10min
-OnUnitActiveSec=1d
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
-
-    systemctl daemon-reload
-    systemctl enable --now nexus-auto-update.timer
-    echo "[✓] Таймер налаштовано!"
-  else
-    echo "DISABLE_NEXUS_TIMER=true" >> "$ENV_FILE"
-    export DISABLE_NEXUS_TIMER=true
-    echo "[i] Автозапуск відключено."
-  fi
+if [ -f "$SERVICE_FILE" ] || [ -f "$TIMER_FILE" ]; then
+  echo "[i] Виявлено залишки автозапуску. Видаляю nexus-auto-update.service/timer…"
+  systemctl stop nexus-auto-update.timer 2>/dev/null || true
+  systemctl disable nexus-auto-update.timer 2>/dev/null || true
+  rm -f "$SERVICE_FILE" "$TIMER_FILE"
+  systemctl daemon-reload
+  echo "[✓] Автозапуск видалено."
 fi
+
+
+# # ==== Налаштування системного таймера ====
+# if [ "${DISABLE_NEXUS_TIMER:-}" != "true" ]; then
+#   if [[ -t 0 ]]; then
+#     echo
+#     echo "====================================================="
+#     echo "Налаштувати автозапуск nexus.sh раз в день?"
+#     echo "(за 15 с без відповіді — відмова)"
+#     echo "====================================================="
+#     read -t 15 -rp "Налаштувати таймер? [y/N] " SETUP_TIMER || SETUP_TIMER="n"
+#   else
+#     SETUP_TIMER="n"
+#   fi
+
+#   if [[ "$SETUP_TIMER" =~ ^[Yy]$ ]]; then
+#     echo "[+] Створюю systemd таймер (системний)…"
+#     SERVICE_FILE="/etc/systemd/system/nexus-auto-update.service"
+#     TIMER_FILE="/etc/systemd/system/nexus-auto-update.timer"
+
+#     cat >"$SERVICE_FILE" <<EOF
+# [Unit]
+# Description=Автозапуск Nexus CLI
+
+# [Service]
+# Type=oneshot
+# ExecStart=/root/nexus.sh
+# StandardOutput=journal
+# StandardError=journal
+# EOF
+
+#     cat >"$TIMER_FILE" <<EOF
+# [Unit]
+# Description=Запуск Nexus CLI раз в день
+
+# [Timer]
+# OnBootSec=10min
+# OnUnitActiveSec=1d
+# Persistent=true
+
+# [Install]
+# WantedBy=timers.target
+# EOF
+
+#     systemctl daemon-reload
+#     systemctl enable --now nexus-auto-update.timer
+#     echo "[✓] Таймер налаштовано!"
+#   else
+#     echo "DISABLE_NEXUS_TIMER=true" >> "$ENV_FILE"
+#     export DISABLE_NEXUS_TIMER=true
+#     echo "[i] Автозапуск відключено."
+#   fi
+# fi
 
 # ==== Пропозиція додати NODE_IDs ====
 # запит тільки якщо прапор SKIP_ADD_IDS_PROMPT не встановлено
