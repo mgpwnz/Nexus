@@ -89,7 +89,8 @@ for ((i=1; i<=COUNT; i++)); do
     STATUS=$?
     set -e
     if (( STATUS == 0 )); then
-      if ID=$(echo "$OUTPUT" | grep -oE 'Node registered successfully with ID: [0-9]+' | grep -oE '[0-9]+'); then
+      # Шукаємо будь-який формат ID (гнучкий патерн)
+      if ID=$(echo "$OUTPUT" | grep -oE 'ID:[[:space:]]*[0-9]+' | grep -oE '[0-9]+'); then
         echo "   Отримано ID: $ID"
         NEW_IDS+=("$ID")
         success=true
@@ -127,8 +128,3 @@ JOINED=$(IFS=,; echo "${ALL_IDS[*]}")
 echo "NODE_IDS=$JOINED" > "$ENV_FILE"
 echo "[+] Оновлено $ENV_FILE: NODE_IDS=$JOINED"
 echo "Готово! Всього нод у конфігурації: ${#ALL_IDS[@]}"
-
-# 10) Завантаження nexus.sh та інструкція
-wget -q -O nexus.sh https://raw.githubusercontent.com/mgpwnz/Nexus/refs/heads/main/nexus.sh
-chmod +x nexus.sh
-echo "Щоб запустити ноди, використовуйте: ./nexus.sh"
