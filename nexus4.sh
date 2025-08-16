@@ -151,7 +151,7 @@ fi
 
 # ==== Перевірка та автоперезапуск ====
 ALL_OK=true
-for id in "${ARR[@]}"; do
+for id in "${LIMITED_IDS[@]}"; do
   if ! tmux has-session -t "nexus-$id" 2>/dev/null; then
     echo "[!] nexus-$id не запустився!"
     ALL_OK=false
@@ -162,6 +162,7 @@ if [ "$ALL_OK" = false ]; then
   sleep 5
   exec "$HOME/nexus.sh"
 fi
+
 
 echo "[✓] Усі ноди запущені в tmux."
 echo "Для підключення: tmux attach -t nexus-<ID>"
