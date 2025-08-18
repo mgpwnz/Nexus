@@ -1,18 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ==== Логування (лише фонова/таймерна робота) ====
-LOGFILE=/var/log/nexus-tmux.log
-
-if [[ -t 1 ]]; then
-  # ми в інтерактивному терміналі — показуємо і лог
-  exec > >(tee -a "$LOGFILE") 2>&1
-else
-  # без терміналу (systemd) — просто в лог
-  exec >> "$LOGFILE" 2>&1
-fi
-
-
 # ==== Встановлюємо $HOME та середовище для systemd ====
 export HOME="/root"
 export XDG_RUNTIME_DIR="/run/user/0"
@@ -32,31 +20,19 @@ ENV_FILE="$HOME/nexus-nodes.env"
 if [ ! -f "$ENV_FILE" ]; then
   echo "[!] Файл $ENV_FILE не знайдено. Створюю..."
   echo "NODE_IDS=" > "$ENV_FILE"
+  echo "NODE_THREADS=8" >> "$ENV_FILE"
 fi
 
 # ==== Завантаження змінних ====
 if [ -f "$ENV_FILE" ]; then
-  # автоматично робимо всі змінні експортованими
   set -a
-  # shell-білдінг: імпортуємо всі змінні з файлу
   source "$ENV_FILE"
   set +a
 fi
-# ==== Відкат автозапуску (видалення systemd таймера, якщо залишився) ====
-SERVICE_FILE="/etc/systemd/system/nexus-auto-update.service"
-TIMER_FILE="/etc/systemd/system/nexus-auto-update.timer"
 
-if [ -f "$SERVICE_FILE" ] || [ -f "$TIMER_FILE" ]; then
-  echo "[i] Виявлено залишки автозапуску. Видаляю nexus-auto-update.service/timer…"
-  systemctl stop nexus-auto-update.timer 2>/dev/null || true
-  systemctl disable nexus-auto-update.timer 2>/dev/null || true
-  rm -f "$SERVICE_FILE" "$TIMER_FILE"
-  systemctl daemon-reload
-  echo "[✓] Автозапуск видалено."
-fi
-
+# Значення за замовчуванням, якщо у .env не вказано
+NODE_THREADS=${NODE_THREADS:-8}
 # ==== Пропозиція додати NODE_IDs ====
-# запит тільки якщо прапор SKIP_ADD_IDS_PROMPT не встановлено
 if [ "${SKIP_ADD_IDS_PROMPT:-}" != "true" ] && [[ -t 0 ]]; then
   echo
   echo "Хочеш додати ще ID до списку?"
@@ -67,10 +43,8 @@ if [ "${SKIP_ADD_IDS_PROMPT:-}" != "true" ] && [[ -t 0 ]]; then
 
   case "$ADD_IDS" in
     [Yy])
-      # користувач хоче додати
       read -rp "Введи ID через кому (ID1,ID2,…): " NEW_IDS
       UPDATED_IDS="${NODE_IDS:+$NODE_IDS,}$NEW_IDS"
-      # оновлюємо або додаємо рядок у env-файлі
       if grep -q '^NODE_IDS=' "$ENV_FILE"; then
         sed -i "s|^NODE_IDS=.*|NODE_IDS=$UPDATED_IDS|" "$ENV_FILE"
       else
@@ -80,22 +54,18 @@ if [ "${SKIP_ADD_IDS_PROMPT:-}" != "true" ] && [[ -t 0 ]]; then
       echo "[+] Оновлено NODE_IDS = $NODE_IDS"
       ;;
     [Ss])
-      # прапор “більше не питати”
       echo "SKIP_ADD_IDS_PROMPT=true" >> "$ENV_FILE"
       export SKIP_ADD_IDS_PROMPT=true
       echo "[i] Більше не питатиму про додавання ID."
       ADD_IDS="n"
       ;;
     *)
-      # будь-який інший варіант — нічого не змінюємо
       ADD_IDS="n"
       ;;
   esac
 else
-  # або вже встановлено SKIP, або неінтерактивний режим
   ADD_IDS="n"
 fi
-
 
 # ==== Зчитуємо масив та перевірка ====
 IFS=',' read -r -a ARR <<< "$NODE_IDS"
@@ -117,29 +87,29 @@ echo "[+] Виконую збірку (release)…"
 cd "$BUILD_DIR"
 /root/.cargo/bin/cargo build --release
 
+# ==== Видаляємо всі старі tmux-сесії nexus-* ====
+tmux list-sessions -F "#{session_name}" 2>/dev/null \
+  | grep -E '^nexus-' \
+  | xargs -r -n1 tmux kill-session -t
 
-# ==== Завершальні дії: tmux через script ====
-# ==== Встановлюємо кількість потоків для однієї ноди ====
-tr=8
-tmux kill-server 2>/dev/null || true
 # ==== Перевіряємо доступні CPU ====
 CPU_TOTAL=$(nproc)
-MAX_PROCS=$(( CPU_TOTAL / tr ))
+MAX_PROCS=$(( CPU_TOTAL / NODE_THREADS ))
 
 if [ "$MAX_PROCS" -eq 0 ]; then
-  echo "❌ Недостатньо CPU для запуску навіть однієї ноди (потрібно $tr потоків)."
+  echo "❌ Недостатньо CPU для запуску навіть однієї ноди (потрібно $NODE_THREADS потоків)."
   exit 1
 fi
 
-echo "[i] У системі $CPU_TOTAL потоків CPU, можна запустити максимум $MAX_PROCS нод по $tr потоків."
+echo "[i] У системі $CPU_TOTAL потоків CPU, можна запустити максимум $MAX_PROCS нод по $NODE_THREADS потоків."
 
 # ==== Вибираємо стільки ID, скільки можемо запустити ====
 LIMITED_IDS=("${ARR[@]:0:$MAX_PROCS}")
 
 # ==== Запускаємо кожну ноду в окремій tmux-сесії ====
 for id in "${LIMITED_IDS[@]}"; do
-  echo "[+] Стартую nexus-$id в tmux (threads=$tr)…"
-  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --max-threads $tr --node-id $id'" /dev/null
+  echo "[+] Стартую nexus-$id в tmux (threads=$NODE_THREADS)…"
+  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --max-threads $NODE_THREADS --node-id $id'" /dev/null
 done
 
 # ==== Якщо було більше ID, ніж можна запустити ====
@@ -162,7 +132,5 @@ if [ "$ALL_OK" = false ]; then
   exec "$HOME/nexus.sh"
 fi
 
-
 echo "[✓] Усі ноди запущені в tmux."
 echo "Для підключення: tmux attach -t nexus-<ID>"
-
