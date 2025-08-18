@@ -120,7 +120,7 @@ cd "$BUILD_DIR"
 
 # ==== Завершальні дії: tmux через script ====
 # ==== Встановлюємо кількість потоків для однієї ноди ====
-tr=4
+tr=8
 
 # ==== Перевіряємо доступні CPU ====
 CPU_TOTAL=$(nproc)
@@ -140,7 +140,7 @@ LIMITED_IDS=("${ARR[@]:0:$MAX_PROCS}")
 for id in "${LIMITED_IDS[@]}"; do
   tmux kill-session -t "nexus-$id" 2>/dev/null || true
   echo "[+] Стартую nexus-$id в tmux (threads=$tr)…"
-  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --node-id $id --max-threads $tr'" /dev/null
+  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --max-threads $tr --node-id $id'" /dev/null
 done
 
 # ==== Якщо було більше ID, ніж можна запустити ====
