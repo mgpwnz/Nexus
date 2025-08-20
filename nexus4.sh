@@ -87,11 +87,6 @@ echo "[+] Виконую збірку (release)…"
 cd "$BUILD_DIR"
 /root/.cargo/bin/cargo build --release
 
-# ==== Видаляємо всі старі tmux-сесії nexus-* ====
-tmux list-sessions -F "#{session_name}" 2>/dev/null \
-  | grep -E '^nexus-' \
-  | xargs -r -n1 tmux kill-session -t
-
 # ==== Перевіряємо доступні CPU ====
 CPU_TOTAL=$(nproc)
 MAX_PROCS=$(( CPU_TOTAL / NODE_THREADS ))
@@ -108,6 +103,7 @@ LIMITED_IDS=("${ARR[@]:0:$MAX_PROCS}")
 
 # ==== Запускаємо кожну ноду в окремій tmux-сесії ====
 for id in "${LIMITED_IDS[@]}"; do
+  tmux kill-session -t "nexus-$id" 2>/dev/null || true
   echo "[+] Стартую nexus-$id в tmux (threads=$NODE_THREADS)…"
   script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --max-threads $NODE_THREADS --node-id $id'" /dev/null
 done
