@@ -19,8 +19,10 @@ ENV_FILE="$HOME/nexus-nodes.env"
 # ==== Перевірка .env ====
 if [ ! -f "$ENV_FILE" ]; then
   echo "[!] Файл $ENV_FILE не знайдено. Створюю..."
-  echo "NODE_IDS=" > "$ENV_FILE"
-  echo "NODE_THREADS=8" >> "$ENV_FILE"
+  {
+    echo "NODE_IDS="
+    echo "DIFFICULTY="
+  } > "$ENV_FILE"
 fi
 
 # ==== Завантаження змінних ====
@@ -30,8 +32,6 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 
-# Значення за замовчуванням, якщо у .env не вказано
-NODE_THREADS=${NODE_THREADS:-8}
 # ==== Пропозиція додати NODE_IDs ====
 if [ "${SKIP_ADD_IDS_PROMPT:-}" != "true" ] && [[ -t 0 ]]; then
   echo
@@ -68,7 +68,7 @@ else
 fi
 
 # ==== Зчитуємо масив та перевірка ====
-IFS=',' read -r -a ARR <<< "$NODE_IDS"
+IFS=',' read -r -a ARR <<< "${NODE_IDS:-}"
 [ "${#ARR[@]}" -eq 0 ] && { echo "[-] Немає жодного Node ID."; exit 1; }
 echo "[+] Node IDs: $NODE_IDS"
 
@@ -87,36 +87,39 @@ echo "[+] Виконую збірку (release)…"
 cd "$BUILD_DIR"
 /root/.cargo/bin/cargo build --release
 
-# ==== Перевіряємо доступні CPU ====
-CPU_TOTAL=$(nproc)
-MAX_PROCS=$(( CPU_TOTAL / NODE_THREADS ))
+# ==== Визначаємо Difficulty ==== 
+if [ -n "${DIFFICULTY:-}" ]; then
+  Difficulty="$DIFFICULTY"
+  echo "[i] Використовую DIFFICULTY з .env: $Difficulty"
+else
+  CPU_TOTAL=$(nproc)
+  RAM_TOTAL=$(grep MemTotal /proc/meminfo | awk '{print $2}') # KB
+  RAM_GB=$((RAM_TOTAL / 1024 / 1024))
 
-if [ "$MAX_PROCS" -eq 0 ]; then
-  echo "❌ Недостатньо CPU для запуску навіть однієї ноди (потрібно $NODE_THREADS потоків)."
-  exit 1
+  if [ "$CPU_TOTAL" -ge 12 ] && [ "$RAM_GB" -ge 24 ]; then
+    Difficulty="extra_large"
+  elif [ "$CPU_TOTAL" -ge 8 ] && [ "$RAM_GB" -ge 16 ]; then
+    Difficulty="large"
+  elif [ "$CPU_TOTAL" -ge 6 ] && [ "$RAM_GB" -ge 12 ]; then
+    Difficulty="medium"
+  elif [ "$CPU_TOTAL" -ge 4 ] && [ "$RAM_GB" -ge 8 ]; then
+    Difficulty="small_medium"
+  else
+    Difficulty="small"
+  fi
+  echo "[i] CPU: $CPU_TOTAL cores, RAM: ${RAM_GB}GB → Автовибір Difficulty = $Difficulty"
 fi
-
-echo "[i] У системі $CPU_TOTAL потоків CPU, можна запустити максимум $MAX_PROCS нод по $NODE_THREADS потоків."
-
-# ==== Вибираємо стільки ID, скільки можемо запустити ====
-LIMITED_IDS=("${ARR[@]:0:$MAX_PROCS}")
 
 # ==== Запускаємо кожну ноду в окремій tmux-сесії ====
-for id in "${LIMITED_IDS[@]}"; do
+for id in "${ARR[@]}"; do
   tmux kill-session -t "nexus-$id" 2>/dev/null || true
-  echo "[+] Стартую nexus-$id в tmux (threads=$NODE_THREADS)…"
-  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --max-threads $NODE_THREADS --node-id $id'" /dev/null
+  echo "[+] Стартую nexus-$id в tmux (difficulty=$Difficulty)…"
+  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --max-difficulty $Difficulty --node-id $id'" /dev/null
 done
-
-# ==== Якщо було більше ID, ніж можна запустити ====
-if [ "${#ARR[@]}" -gt "$MAX_PROCS" ]; then
-  echo "[!] У списку було ${#ARR[@]} нод, але реально запущено тільки $MAX_PROCS через CPU-обмеження."
-  echo "[!] Надлишкові ID: ${ARR[@]:$MAX_PROCS}"
-fi
 
 # ==== Перевірка та автоперезапуск ====
 ALL_OK=true
-for id in "${LIMITED_IDS[@]}"; do
+for id in "${ARR[@]}"; do
   if ! tmux has-session -t "nexus-$id" 2>/dev/null; then
     echo "[!] nexus-$id не запустився!"
     ALL_OK=false
@@ -130,3 +133,4 @@ fi
 
 echo "[✓] Усі ноди запущені в tmux."
 echo "Для підключення: tmux attach -t nexus-<ID>"
+echo "Для відключення: Ctrl+b, потім d"
