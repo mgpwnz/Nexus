@@ -97,17 +97,17 @@ else
   RAM_GB=$((RAM_TOTAL / 1024 / 1024))
 
   if [ "$CPU_TOTAL" -ge 16 ] && [ "$RAM_GB" -ge 30 ]; then
-    Difficulty="extra_large2"
+    Difficulty="EXTRA_LARGE_2"
   elif [ "$CPU_TOTAL" -ge 12 ] && [ "$RAM_GB" -ge 24 ]; then
-    Difficulty="extra_large"
+    Difficulty="EXTRA_LARGE"
   elif [ "$CPU_TOTAL" -ge 8 ] && [ "$RAM_GB" -ge 16 ]; then
-    Difficulty="large"
+    Difficulty="LARGE"
   elif [ "$CPU_TOTAL" -ge 6 ] && [ "$RAM_GB" -ge 12 ]; then
-    Difficulty="medium"
+    Difficulty="MEDIUM"
   elif [ "$CPU_TOTAL" -ge 4 ] && [ "$RAM_GB" -ge 8 ]; then
-    Difficulty="small_medium"
+    Difficulty="SMALL_MEDIUM"
   else
-    Difficulty="small"
+    Difficulty="SMALL"
   fi
   echo "[i] CPU: $CPU_TOTAL cores, RAM: ${RAM_GB}GB → Автовибір Difficulty = $Difficulty"
 fi
