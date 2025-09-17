@@ -116,7 +116,7 @@ fi
 for id in "${ARR[@]}"; do
   tmux kill-session -t "nexus-$id" 2>/dev/null || true
   echo "[+] Стартую nexus-$id в tmux (difficulty=$Difficulty)…"
-  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --max-threads 24 --max-difficulty $Difficulty --node-id $id'" /dev/null
+  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --max-difficulty $Difficulty --node-id $id'" /dev/null
 done
 
 # ==== Перевірка та автоперезапуск ====
