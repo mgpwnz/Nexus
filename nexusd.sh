@@ -96,7 +96,9 @@ else
   RAM_TOTAL=$(grep MemTotal /proc/meminfo | awk '{print $2}') # KB
   RAM_GB=$((RAM_TOTAL / 1024 / 1024))
 
-  if [ "$CPU_TOTAL" -ge 12 ] && [ "$RAM_GB" -ge 24 ]; then
+  if [ "$CPU_TOTAL" -ge 16 ] && [ "$RAM_GB" -ge 30 ]; then
+    Difficulty="extra_large2"
+  elif [ "$CPU_TOTAL" -ge 12 ] && [ "$RAM_GB" -ge 24 ]; then
     Difficulty="extra_large"
   elif [ "$CPU_TOTAL" -ge 8 ] && [ "$RAM_GB" -ge 16 ]; then
     Difficulty="large"
@@ -114,7 +116,7 @@ fi
 for id in "${ARR[@]}"; do
   tmux kill-session -t "nexus-$id" 2>/dev/null || true
   echo "[+] Стартую nexus-$id в tmux (difficulty=$Difficulty)…"
-  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --max-threads 8 --max-difficulty $Difficulty --node-id $id'" /dev/null
+  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --max-threads 24 --max-difficulty $Difficulty --node-id $id'" /dev/null
 done
 
 # ==== Перевірка та автоперезапуск ====
