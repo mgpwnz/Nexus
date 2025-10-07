@@ -247,7 +247,6 @@ for i in "${!ARR[@]}"; do
 
   tmux kill-session -t "nexus-$id" 2>/dev/null || true
   echo "[+] Стартую nexus-$id з $THREADS потоками…"
-  echo "[i] Запуск команди: $BUILD_DIR/target/release/nexus-network start --node-id $id --max-threads $THREADS"
 
   script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --node-id $id --max-threads $THREADS'" /dev/null
 done
