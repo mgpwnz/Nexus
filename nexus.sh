@@ -185,34 +185,45 @@ cd "$BUILD_DIR"
 
 # ==== Завершальні дії: tmux через script ====
 # ==== Автоматичний розподіл CPU потоків між нодами ====
+# TOTAL_CPUS=$(nproc)
+# NODE_COUNT=${#ARR[@]}
+
+# if (( NODE_COUNT > TOTAL_CPUS )); then
+#   echo "[!] Кількість нод ($NODE_COUNT) більша ніж потоків CPU ($TOTAL_CPUS). Деякі ноди ділитимуть потоки."
+# fi
+
+# THREADS_PER_NODE=$(( TOTAL_CPUS / NODE_COUNT ))
+# EXTRA_THREADS=$(( TOTAL_CPUS % NODE_COUNT ))
+
+# echo "[i] Всього CPU потоків: $TOTAL_CPUS"
+# echo "[i] Нод: $NODE_COUNT"
+# echo "[i] Базово потоків на ноду: $THREADS_PER_NODE (з лишком $EXTRA_THREADS)"
+
+# for i in "${!ARR[@]}"; do
+#   id="${ARR[$i]}"
+
+#   # Розподіляємо залишкові потоки між першими EXTRA_THREADS нодами
+#   if (( i < EXTRA_THREADS )); then
+#     THREADS=$(( THREADS_PER_NODE + 1 ))
+#   else
+#     THREADS=$THREADS_PER_NODE
+#   fi
+
+#   tmux kill-session -t "nexus-$id" 2>/dev/null || true
+#   echo "[+] Стартую nexus-$id з $THREADS потоками…"
+
+#   script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --node-id $id --max-threads $THREADS'" /dev/null
+# done
+# ==== Використання всіх потоків для кожної ноди ====
 TOTAL_CPUS=$(nproc)
-NODE_COUNT=${#ARR[@]}
-
-if (( NODE_COUNT > TOTAL_CPUS )); then
-  echo "[!] Кількість нод ($NODE_COUNT) більша ніж потоків CPU ($TOTAL_CPUS). Деякі ноди ділитимуть потоки."
-fi
-
-THREADS_PER_NODE=$(( TOTAL_CPUS / NODE_COUNT ))
-EXTRA_THREADS=$(( TOTAL_CPUS % NODE_COUNT ))
-
 echo "[i] Всього CPU потоків: $TOTAL_CPUS"
-echo "[i] Нод: $NODE_COUNT"
-echo "[i] Базово потоків на ноду: $THREADS_PER_NODE (з лишком $EXTRA_THREADS)"
+echo "[i] Кожна нода отримає --max-threads=$TOTAL_CPUS"
 
-for i in "${!ARR[@]}"; do
-  id="${ARR[$i]}"
-
-  # Розподіляємо залишкові потоки між першими EXTRA_THREADS нодами
-  if (( i < EXTRA_THREADS )); then
-    THREADS=$(( THREADS_PER_NODE + 1 ))
-  else
-    THREADS=$THREADS_PER_NODE
-  fi
-
+for id in "${ARR[@]}"; do
   tmux kill-session -t "nexus-$id" 2>/dev/null || true
-  echo "[+] Стартую nexus-$id з $THREADS потоками…"
+  echo "[+] Стартую nexus-$id з $TOTAL_CPUS потоками…"
 
-  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --node-id $id --max-threads $THREADS'" /dev/null
+  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --node-id $id --max-threads $TOTAL_CPUS'" /dev/null
 done
 
 
