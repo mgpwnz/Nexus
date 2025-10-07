@@ -182,48 +182,73 @@ echo "[+] Виконую збірку (release)…"
 cd "$BUILD_DIR"
 /root/.cargo/bin/cargo build --release
 
+# ==== CPU конфігурація ====
+TOTAL_CPUS=$(nproc)
+
+echo
+echo "==============================================="
+echo "🧠 Всього потоків CPU на системі: $TOTAL_CPUS"
+echo "==============================================="
+
+# Якщо вже є значення в env — використовуємо його
+if [ -n "${MAX_TOTAL_THREADS:-}" ]; then
+  echo "[i] Поточне обмеження з env: MAX_TOTAL_THREADS=$MAX_TOTAL_THREADS"
+else
+  # Якщо немає — запитуємо користувача
+  if [[ -t 0 ]]; then
+    read -rp "Скільки потоків дозволено використовувати для Nexus? [1-$TOTAL_CPUS]: " MAX_THREADS_INPUT
+  else
+    MAX_THREADS_INPUT="$TOTAL_CPUS"
+  fi
+
+  # Валідація
+  if ! [[ "$MAX_THREADS_INPUT" =~ ^[0-9]+$ ]] || (( MAX_THREADS_INPUT < 1 || MAX_THREADS_INPUT > TOTAL_CPUS )); then
+    echo "[!] Некоректне число, використовую $TOTAL_CPUS"
+    MAX_THREADS_INPUT="$TOTAL_CPUS"
+  fi
+
+  MAX_TOTAL_THREADS="$MAX_THREADS_INPUT"
+
+  # Запис у .env
+  if grep -q '^MAX_TOTAL_THREADS=' "$ENV_FILE"; then
+    sed -i "s|^MAX_TOTAL_THREADS=.*|MAX_TOTAL_THREADS=$MAX_TOTAL_THREADS|" "$ENV_FILE"
+  else
+    echo "MAX_TOTAL_THREADS=$MAX_TOTAL_THREADS" >> "$ENV_FILE"
+  fi
+
+  echo "[+] Збережено в $ENV_FILE: MAX_TOTAL_THREADS=$MAX_TOTAL_THREADS"
+fi
+
+# ==== Автоматичний розподіл потоків між нодами ====
+NODE_COUNT=${#ARR[@]}
+if (( NODE_COUNT > MAX_TOTAL_THREADS )); then
+  echo "[!] Кількість нод ($NODE_COUNT) більша за дозволені потоки ($MAX_TOTAL_THREADS). Деякі ноди ділитимуть потоки."
+fi
+
+THREADS_PER_NODE=$(( MAX_TOTAL_THREADS / NODE_COUNT ))
+EXTRA_THREADS=$(( MAX_TOTAL_THREADS % NODE_COUNT ))
+
+echo
+echo "[i] Використовуємо всього потоків: $MAX_TOTAL_THREADS"
+echo "[i] Нод: $NODE_COUNT"
+echo "[i] Базово потоків на ноду: $THREADS_PER_NODE (з лишком $EXTRA_THREADS)"
+echo "-----------------------------------------------"
 
 # ==== Завершальні дії: tmux через script ====
-# ==== Автоматичний розподіл CPU потоків між нодами ====
-# TOTAL_CPUS=$(nproc)
-# NODE_COUNT=${#ARR[@]}
+for i in "${!ARR[@]}"; do
+  id="${ARR[$i]}"
 
-# if (( NODE_COUNT > TOTAL_CPUS )); then
-#   echo "[!] Кількість нод ($NODE_COUNT) більша ніж потоків CPU ($TOTAL_CPUS). Деякі ноди ділитимуть потоки."
-# fi
+  # розподіляємо залишкові потоки між першими EXTRA_THREADS нодами
+  if (( i < EXTRA_THREADS )); then
+    THREADS=$(( THREADS_PER_NODE + 1 ))
+  else
+    THREADS=$THREADS_PER_NODE
+  fi
 
-# THREADS_PER_NODE=$(( TOTAL_CPUS / NODE_COUNT ))
-# EXTRA_THREADS=$(( TOTAL_CPUS % NODE_COUNT ))
-
-# echo "[i] Всього CPU потоків: $TOTAL_CPUS"
-# echo "[i] Нод: $NODE_COUNT"
-# echo "[i] Базово потоків на ноду: $THREADS_PER_NODE (з лишком $EXTRA_THREADS)"
-
-# for i in "${!ARR[@]}"; do
-#   id="${ARR[$i]}"
-
-#   # Розподіляємо залишкові потоки між першими EXTRA_THREADS нодами
-#   if (( i < EXTRA_THREADS )); then
-#     THREADS=$(( THREADS_PER_NODE + 1 ))
-#   else
-#     THREADS=$THREADS_PER_NODE
-#   fi
-
-#   tmux kill-session -t "nexus-$id" 2>/dev/null || true
-#   echo "[+] Стартую nexus-$id з $THREADS потоками…"
-
-#   script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --node-id $id --max-threads $THREADS'" /dev/null
-# done
-# ==== Використання всіх потоків для кожної ноди ====
-TOTAL_CPUS=$(nproc)
-echo "[i] Всього CPU потоків: $TOTAL_CPUS"
-echo "[i] Кожна нода отримає --max-threads=$TOTAL_CPUS"
-
-for id in "${ARR[@]}"; do
   tmux kill-session -t "nexus-$id" 2>/dev/null || true
-  echo "[+] Стартую nexus-$id з $TOTAL_CPUS потоками…"
+  echo "[+] Стартую nexus-$id з $THREADS потоками…"
 
-  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --node-id $id --max-threads $TOTAL_CPUS'" /dev/null
+  script -q -c "tmux new-session -d -s nexus-$id '$BUILD_DIR/target/release/nexus-network start --node-id $id --max-threads $THREADS'" /dev/null
 done
 
 
