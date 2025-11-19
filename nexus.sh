@@ -15,7 +15,7 @@ fi
 
 # ==== Встановлюємо $HOME та середовище для systemd ====
 export HOME="/root"
-export XDG_RUNTIME_DIR="/run/user/0"
+export TMUX_TMPDIR="/run/tmux"
 export TERM="xterm"
 
 # ==== Перевірка залежностей ====
