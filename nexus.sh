@@ -1,60 +1,44 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ==== Логування (лише фонова/таймерна робота) ====
 LOGFILE=/var/log/nexus-tmux.log
+mkdir -p "$(dirname "$LOGFILE")"
 
 if [[ -t 1 ]]; then
-  # ми в інтерактивному терміналі — показуємо і лог
   exec > >(tee -a "$LOGFILE") 2>&1
 else
-  # без терміналу (systemd) — просто в лог
   exec >> "$LOGFILE" 2>&1
 fi
 
-
-# ==== Встановлюємо $HOME та середовище для systemd ====
 export HOME="/root"
 export TMUX_TMPDIR="/run/tmux"
 export TERM="xterm"
 
-# ==== Перевірка залежностей ====
 command -v tmux >/dev/null 2>&1 || { echo "❌ Потрібно встановити tmux"; exit 1; }
 command -v script >/dev/null 2>&1 || { echo "❌ Потрібно встановити script"; exit 1; }
 
-# ==== Налаштування ====
+# === Налаштування ===
 REPO_URL="https://github.com/nexus-xyz/nexus-cli.git"
 PROJECT_DIR="$HOME/nexus-cli"
 BUILD_DIR="$PROJECT_DIR/clients/cli"
 ENV_FILE="$HOME/nexus-nodes.env"
 
-# ==== Перевірка .env ====
+# === Перевірка .env ===
 if [ ! -f "$ENV_FILE" ]; then
   echo "[!] Файл $ENV_FILE не знайдено. Створюю..."
   echo "NODE_IDS=" > "$ENV_FILE"
 fi
 
-# ==== Завантаження змінних ====
 if [ -f "$ENV_FILE" ]; then
-  # автоматично робимо всі змінні експортованими
   set -a
-  # shell-білдінг: імпортуємо всі змінні з файлу
   source "$ENV_FILE"
   set +a
 fi
 
-# ==== Відкат автозапуску (видалення systemd таймера, якщо залишився) ====
-SERVICE_FILE="/etc/systemd/system/nexus-auto-update.service"
-TIMER_FILE="/etc/systemd/system/nexus-auto-update.timer"
-
-if [ -f "$SERVICE_FILE" ] || [ -f "$TIMER_FILE" ]; then
-  echo "[i] Виявлено залишки автозапуску. Видаляю nexus-auto-update.service/timer…"
-  systemctl stop nexus-auto-update.timer 2>/dev/null || true
-  systemctl disable nexus-auto-update.timer 2>/dev/null || true
-  rm -f "$SERVICE_FILE" "$TIMER_FILE"
-  systemctl daemon-reload
-  echo "[✓] Автозапуск видалено."
-fi
+# === Створення каталогу для tmux сокетів ===
+mkdir -p /run/tmux
+chmod 700 /run/tmux
+chown root:root /run/tmux
 
 
 # ==== Пропозиція додати NODE_IDs ====
@@ -204,5 +188,33 @@ if [ "$ALL_OK" = false ]; then
 fi
 
 echo "[✓] Усі ноди запущені в tmux."
-echo "Для підключення: tmux attach -t nexus-<ID>"
+# === Створення systemd-сервісу для автозапуску ===
+SERVICE_FILE="/etc/systemd/system/nexus.service"
+
+if [ ! -f "$SERVICE_FILE" ]; then
+  echo "[i] Створюю systemd-сервіс для автозапуску nexus..."
+  cat <<EOF > "$SERVICE_FILE"
+[Unit]
+Description=Nexus nodes autostart (tmux-safe)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Environment=TMUX_TMPDIR=/run/tmux
+ExecStartPre=/bin/mkdir -p /run/tmux
+ExecStartPre=/bin/chmod 700 /run/tmux
+ExecStart=$HOME/nexus.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable nexus.service
+  echo "[✓] Сервіс створено та включено для автозапуску."
+fi
+
+echo "[✓] Скрипт виконано. Для підключення: tmux attach -t nexus-<ID>"
 
